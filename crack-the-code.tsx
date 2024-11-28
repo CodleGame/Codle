@@ -14,6 +14,7 @@ type Difficulty = 'easy' | 'normal' | 'hard' | 'extreme'
 type AttemptMode = 'limited' | 'infinite'
 
 const MAX_GUESSES = 10
+const MAX_GUESSES_DISPLAY = 5
 
 const CrackTheCode: React.FC = () => {
   const [codeLength, setCodeLength] = useState<number>(4)
@@ -26,10 +27,10 @@ const CrackTheCode: React.FC = () => {
   const [gameLost, setGameLost] = useState<boolean>(false)
   const [difficulty, setDifficulty] = useState<Difficulty>('normal')
   const [attemptMode, setAttemptMode] = useState<AttemptMode>('limited')
-  const [isSheetOpen, setIsSheetOpen] = useState(false); // Added state for Sheet
+  const [isSheetOpen, setIsSheetOpen] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  const getMaxAttempts = () => attemptMode === 'limited' ? codeLength : MAX_GUESSES
+  const getMaxAttempts = () => attemptMode === 'limited' ? MAX_GUESSES : Infinity
 
   useEffect(() => {
     generateSecretCode()
@@ -47,10 +48,14 @@ const CrackTheCode: React.FC = () => {
 
     switch (difficulty) {
       case 'easy':
-        characters = '123456789'
-        newCode = Array.from({ length: codeLength }, (_, index) => 
-          characters[Math.floor(Math.random() * (characters.length - index))]
-        )
+        characters = '0123456789'
+        newCode = []
+        while (newCode.length < codeLength) {
+          const char = characters[Math.floor(Math.random() * characters.length)]
+          if (!newCode.includes(char)) {
+            newCode.push(char)
+          }
+        }
         break
       case 'normal':
         characters = '0123456789'
@@ -63,8 +68,7 @@ const CrackTheCode: React.FC = () => {
         newCode = Array.from({ length: codeLength }, () => 
           characters[Math.floor(Math.random() * characters.length)]
         )
-        // Ensure at least one repeated number
-        if (new Set(newCode).size === newCode.length) {
+        if (codeLength >= 6 && new Set(newCode).size === newCode.length) {
           const indexToRepeat = Math.floor(Math.random() * codeLength)
           newCode[indexToRepeat] = newCode[(indexToRepeat + 1) % codeLength]
         }
@@ -81,16 +85,15 @@ const CrackTheCode: React.FC = () => {
   }
 
   const resetGame = () => {
-    const maxAttempts = getMaxAttempts();
-    setGuesses(Array(maxAttempts).fill(Array(codeLength).fill('')));
-    setFeedback(Array(maxAttempts).fill(Array(codeLength).fill('')));
-    setCurrentGuessIndex(0);
-    setGameWon(false);
-    setGameLost(false);
-    setCurrentGuess(Array(codeLength).fill(''));
-    generateSecretCode();
-    inputRefs.current[0]?.focus();
-  };
+    setGuesses([])
+    setFeedback([])
+    setCurrentGuessIndex(0)
+    setGameWon(false)
+    setGameLost(false)
+    setCurrentGuess(Array(codeLength).fill(''))
+    generateSecretCode()
+    inputRefs.current[0]?.focus()
+  }
 
   const handleInputChange = (index: number, value: string) => {
     const newGuess = [...currentGuess]
@@ -113,18 +116,31 @@ const CrackTheCode: React.FC = () => {
   const handleGuess = () => {
     if (currentGuess.some(char => char === '')) return
 
+    const codeCopy = [...secretCode]
     const newFeedback = currentGuess.map((char, index) => {
-      if (char.toUpperCase() === secretCode[index]) return 'green'
-      if (secretCode.includes(char.toUpperCase())) return 'yellow'
-      return 'gray'
+      if (char.toUpperCase() === secretCode[index]) {
+        codeCopy[index] = null
+        return 'green'
+      }
+      return null
     })
 
-    const newGuesses = [...guesses]
-    newGuesses[currentGuessIndex] = currentGuess
+    currentGuess.forEach((char, index) => {
+      if (newFeedback[index] === null) {
+        const secretIndex = codeCopy.findIndex(c => c === char.toUpperCase())
+        if (secretIndex !== -1) {
+          newFeedback[index] = 'yellow'
+          codeCopy[secretIndex] = null
+        } else {
+          newFeedback[index] = 'gray'
+        }
+      }
+    })
+
+    const newGuesses = [...guesses, currentGuess]
     setGuesses(newGuesses)
 
-    const newFeedbacks = [...feedback]
-    newFeedbacks[currentGuessIndex] = newFeedback
+    const newFeedbacks = [...feedback, newFeedback]
     setFeedback(newFeedbacks)
 
     setCurrentGuess(Array(codeLength).fill(''))
@@ -133,17 +149,29 @@ const CrackTheCode: React.FC = () => {
 
     if (newFeedback.every(color => color === 'green')) {
       setGameWon(true)
-    } else if (currentGuessIndex + 1 >= getMaxAttempts()) {
+    } else if (attemptMode === 'limited' && currentGuessIndex + 1 >= MAX_GUESSES) {
       setGameLost(true)
     }
   }
 
+  const handleRenounce = () => {
+    setGameLost(true)
+  }
+
+  const displayedGuesses = attemptMode === 'infinite' 
+    ? guesses.slice(-MAX_GUESSES_DISPLAY) 
+    : guesses
+
+  const displayedFeedback = attemptMode === 'infinite'
+    ? feedback.slice(-MAX_GUESSES_DISPLAY)
+    : feedback
+
   return (
-    <div className="flex flex-col md:flex-row justify-center items-start space-y-4 md:space-y-0 md:space-x-4 p-4">
-      <div className="w-full md:w-96 bg-white rounded-lg shadow-md p-4">
+    <div className="flex flex-col lg:flex-row justify-center items-start space-y-4 lg:space-y-0 lg:space-x-4 p-4">
+      <div className="w-full lg:w-[65%] bg-white rounded-lg shadow-md p-4">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl font-bold">Crack the Code</h1>
-          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}> {/* Updated Sheet component */}
+          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger asChild>
               <Button variant="outline" size="icon">
                 <Cog6ToothIcon className="h-4 w-4" />
@@ -198,8 +226,8 @@ const CrackTheCode: React.FC = () => {
                 </RadioGroup>
                 
                 <Button onClick={() => {
-                  resetGame();
-                  setIsSheetOpen(false); // Updated onClick handler
+                  resetGame()
+                  setIsSheetOpen(false)
                 }} className="w-full">
                   Apply and Start New Game
                 </Button>
@@ -209,7 +237,7 @@ const CrackTheCode: React.FC = () => {
         </div>
         
         <div className="mb-4">
-          <div className="grid grid-cols-4 gap-2 mb-2">
+          <div className={`grid gap-2 mb-2`} style={{ gridTemplateColumns: `repeat(${codeLength}, minmax(0, 1fr))` }}>
             {currentGuess.map((char, index) => (
               <Input
                 key={index}
@@ -224,21 +252,32 @@ const CrackTheCode: React.FC = () => {
               />
             ))}
           </div>
-          <Button onClick={handleGuess} disabled={currentGuess.some(char => char === '') || gameWon || gameLost} className="w-full">
-            Guess
-          </Button>
+          <div className="flex space-x-2 mb-4">
+            <Button 
+              onClick={handleGuess} 
+              disabled={currentGuess.some(char => char === '') || gameWon || gameLost} 
+              className="flex-grow"
+            >
+              Guess
+            </Button>
+            {difficulty === 'extreme' && currentGuessIndex >= 10 && !gameWon && !gameLost && (
+              <Button onClick={handleRenounce} variant="destructive" className="w-24">
+                Give Up
+              </Button>
+            )}
+          </div>
         </div>
         
-        <div className="grid gap-2" style={{ gridTemplateRows: `repeat(${getMaxAttempts()}, minmax(0, 1fr))` }}>
-          {guesses.map((guess, rowIndex) => (
-            <div key={rowIndex} className="grid grid-cols-4 gap-2">
+        <div className="grid gap-2 max-h-[60vh] overflow-y-auto">
+          {displayedGuesses.map((guess, rowIndex) => (
+            <div key={rowIndex} className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${codeLength}, minmax(0, 1fr))` }}>
               {guess.map((char, colIndex) => (
                 <div
                   key={colIndex}
                   className={`w-full h-12 flex items-center justify-center text-2xl font-bold rounded-md ${
-                    feedback[rowIndex][colIndex] === 'green' ? 'bg-green-500 text-white' :
-                    feedback[rowIndex][colIndex] === 'yellow' ? 'bg-yellow-500 text-white' :
-                    feedback[rowIndex][colIndex] === 'gray' ? 'bg-gray-300 text-white' :
+                    displayedFeedback[rowIndex][colIndex] === 'green' ? 'bg-green-500 text-white' :
+                    displayedFeedback[rowIndex][colIndex] === 'yellow' ? 'bg-yellow-500 text-white' :
+                    displayedFeedback[rowIndex][colIndex] === 'gray' ? 'bg-gray-300 text-white' :
                     'bg-gray-100'
                   }`}
                 >
@@ -270,12 +309,17 @@ const CrackTheCode: React.FC = () => {
 
         {!gameWon && !gameLost && (
           <p className="mt-2 text-center">
-            Attempts remaining: {getMaxAttempts() - currentGuessIndex}
+            {attemptMode === 'limited' 
+              ? `Attempts remaining: ${MAX_GUESSES - currentGuessIndex}`
+              : `Attempts used: ${currentGuessIndex}`
+            }
           </p>
         )}
       </div>
       
-      <RulesPanel difficulty={difficulty} attemptMode={attemptMode} codeLength={codeLength} />
+      <div className="w-full lg:w-[35%]">
+        <RulesPanel difficulty={difficulty} attemptMode={attemptMode} codeLength={codeLength} />
+      </div>
     </div>
   )
 }
